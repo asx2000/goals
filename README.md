@@ -64,6 +64,16 @@ python3 -m http.server 8099
 **After changing any shell file, bump `CACHE` in `sw.js`** (e.g. `waypoint-v1`
 → `waypoint-v2`), or installed clients keep serving the old build.
 
+### Deployment
+
+`.github/workflows/pages.yml` publishes the repo root to GitHub Pages on every
+push to `main`. It needs Pages switched on once, by hand:
+
+> Settings → Pages → **Source: GitHub Actions**
+
+The workflow's `GITHUB_TOKEN` can deploy to Pages but can't create the site —
+that needs repo-admin scope — so this first step can't be automated.
+
 Fonts are system stacks (New York / San Francisco / SF Mono on Apple devices) —
 nothing is fetched at runtime, so the app looks the same offline.
 

@@ -24,11 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # enablement: true turns Pages on the first time this runs,
-      # so the repo setting never has to be touched by hand
+      # Pages must already be enabled with Source = "GitHub Actions" in repo
+      # settings. GITHUB_TOKEN can deploy to Pages but cannot create the site
+      # (that needs repo-admin scope), so enablement here only verifies it.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       # The app is plain static files — no build step, upload the repo as-is.
       - uses: actions/upload-pages-artifact@v3
