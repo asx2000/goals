@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Waypoint — a goal timeline</title>
+
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<meta name="theme-color" content="#16232B">
+<meta name="description" content="Map a goal as a route of waypoints and see what you can work on right now.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Waypoint">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<style>
+  :root{
+    --ink:#16232B;
+    --panel:#1E2F3A;
+    --panel-2:#28414D;
+    --line:rgba(232,226,208,0.12);
+    --parchment:#ECE4D0;
+    --muted:#93A8A2;
+    --brass:#C98A4B;
+    --brass-dim:rgba(201,138,75,0.30);
+    --seafoam:#6FA88F;
+    --seafoam-dim:rgba(111,168,143,0.22);
+    --coral:#C1685F;
+
+    --font-display:ui-serif,'New York',Georgia,'Times New Roman',serif;
+    --font-body:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,sans-serif;
+    --font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
+    --safe-left:env(safe-area-inset-left,0px);
+    --safe-right:env(safe-area-inset-right,0px);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--ink); color:var(--parchment);
+    font-family:var(--font-body); -webkit-font-smoothing:antialiased; }
+  body{ overscroll-behavior-y:none; }
+  h1,h2{ font-family:var(--font-display); margin:0; }
+  button,input,textarea{ font-family:inherit; color:inherit; font-size:16px; }
+  ::selection{ background:var(--brass-dim); }
+
+  /* ---------- Install hint ---------- */
+  .install-hint{ display:flex; align-items:center; gap:12px; padding:10px 16px;
+    padding-top:calc(10px + var(--safe-top));
+    padding-left:calc(16px + var(--safe-left)); padding-right:calc(16px + var(--safe-right));
+    background:var(--brass); color:var(--ink); font-size:13px; font-weight:600; }
+  /* author display:flex would otherwise beat the UA [hidden] rule */
+  .install-hint[hidden]{ display:none; }
+  .install-hint span{ flex:1; }
+  .install-hint button{ background:rgba(22,35,43,.15); border:none; color:var(--ink);
+    border-radius:16px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+  /* when the hint is showing it owns the safe-area inset, not the topbar */
+  .install-hint:not([hidden]) + .topbar{ padding-top:20px; }
+
+  /* ---------- Header ---------- */
+  .topbar{
+    display:flex; align-items:flex-end; flex-wrap:wrap; gap:18px 28px;
+    padding:20px 24px; background:var(--panel); border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:20;
+    padding-top:calc(20px + var(--safe-top));
+    padding-left:calc(24px + var(--safe-left)); padding-right:calc(24px + var(--safe-right));
+  }
+  .brand{ display:flex; align-items:center; gap:8px; color:var(--brass);
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.14em; }
+  .brand svg{ display:block; }
+  .goal-block{ flex:1 1 260px; min-width:0; }
+  .goal-title{ font-size:clamp(21px,3.4vw,30px); font-weight:600; line-height:1.15;
+    background:transparent; border:none; padding:0; cursor:pointer; text-align:left;
+    display:flex; align-items:center; gap:8px; }
+  .goal-title:hover{ color:var(--brass); }
+  .goal-title .caret{ font-size:12px; color:var(--muted); }
+  .goal-date{ margin-top:4px; font-family:var(--font-mono); font-size:11.5px;
+    color:var(--muted); letter-spacing:.03em; }
+  .header-right{ display:flex; align-items:center; gap:20px; }
+  .progress-text{ font-size:11.5px; color:var(--muted); margin-bottom:6px; text-align:right;
+    font-family:var(--font-mono); }
+  .progress-track{ width:170px; height:6px; border-radius:4px; background:var(--panel-2); overflow:hidden; }
+  .progress-fill{ height:100%; width:0%; background:var(--brass); transition:width .4s ease; }
+  .link-btn{ background:none; border:1px solid var(--line); color:var(--muted); font-size:12px;
+    padding:9px 13px; border-radius:20px; cursor:pointer; white-space:nowrap; }
+  .link-btn:hover{ color:var(--parchment); border-color:var(--muted); }
+
+  /* ---------- Legend ---------- */
+  .legend{ display:flex; flex-wrap:wrap; gap:14px 22px; padding:12px 24px;
+    padding-left:calc(24px + var(--safe-left)); padding-right:calc(24px + var(--safe-right));
+    background:var(--ink); border-bottom:1px solid var(--line); }
+  .legend-item{ display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--muted); }
+  .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
+  .dot-locked{ border:1.5px dashed var(--muted); }
+  .dot-available{ border:1.5px solid var(--brass); box-shadow:0 0 0 3px var(--brass-dim); }
+  .dot-progress{ background:var(--brass); }
+  .dot-complete{ background:var(--seafoam); }
+  .dot-goal{ background:none; border:1.5px solid var(--brass); border-radius:3px; transform:rotate(45deg); }
+
+  /* ---------- Next up ---------- */
+  .nextup{ padding:16px 24px 0;
+    padding-left:calc(24px + var(--safe-left)); padding-right:calc(24px + var(--safe-right)); }
+  .nextup-head{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .nextup-toggle{ background:none; border:none; padding:4px 0; cursor:pointer; display:flex;
+    align-items:center; gap:8px; font-family:var(--font-mono); font-size:10.5px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--brass); }
+  .nextup-toggle .chev{ transition:transform .18s ease; display:inline-block; font-size:9px; }
+  .nextup.collapsed .chev{ transform:rotate(-90deg); }
+  .nextup-count{ font-family:var(--font-mono); font-size:10.5px; color:var(--muted); }
+  .nextup-list{ display:flex; flex-direction:column; gap:8px; }
+  .nextup.collapsed .nextup-list{ display:none; }
+  .nextup-row{ display:flex; align-items:center; gap:12px; background:var(--panel);
+    border:1px solid var(--line); border-radius:11px; padding:11px 13px; }
+  .nextup-row.is-active{ border-color:var(--brass-dim); }
+  .nextup-tick{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .nextup-tick.available{ border:1.5px solid var(--brass); }
+  .nextup-tick.in-progress{ background:var(--brass); }
+  .nextup-main{ flex:1; min-width:0; background:none; border:none; text-align:left;
+    cursor:pointer; padding:0; }
+  .nextup-title{ display:block; font-size:14px; font-weight:600; line-height:1.3;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nextup-meta{ display:block; font-size:11.5px; color:var(--muted); margin-top:3px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nextup-meta .sep{ opacity:.5; margin:0 6px; }
+  .nextup-actions{ display:flex; gap:7px; flex:none; }
+  .mini-btn{ border:1px solid var(--brass); background:transparent; color:var(--brass);
+    border-radius:16px; padding:7px 12px; font-size:12px; font-weight:600; cursor:pointer;
+    white-space:nowrap; }
+  .mini-btn:hover{ background:var(--brass-dim); }
+  .mini-btn.solid{ background:var(--seafoam); border-color:var(--seafoam); color:var(--ink); }
+  .nextup-empty{ font-size:13px; color:var(--muted); background:var(--panel);
+    border:1px dashed var(--line); border-radius:11px; padding:14px; }
+
+  /* ---------- Stage ---------- */
+  .stage{ padding:20px 24px 48px;
+    padding-left:calc(24px + var(--safe-left)); padding-right:calc(24px + var(--safe-right));
+    padding-bottom:calc(48px + var(--safe-bottom)); }
+  .stage-toolbar{ display:flex; align-items:center; justify-content:space-between;
+    gap:12px; margin-bottom:14px; }
+  .stage-hint{ font-size:12px; color:var(--muted); }
+  .btn-primary{ background:var(--brass); color:var(--ink); border:none; font-weight:600;
+    font-size:13px; padding:11px 16px; border-radius:8px; cursor:pointer; }
+  .btn-primary:hover{ filter:brightness(1.08); }
+
+  .canvas-wrap{ border:1px solid var(--line); border-radius:14px; background:
+    radial-gradient(ellipse at top left, rgba(201,138,75,0.05), transparent 60%), var(--panel); }
+  .canvas-wrap.scroll-x{ overflow-x:auto; overflow-y:hidden; height:min(560px,72vh); }
+  .canvas-wrap.scroll-y-page{ overflow:visible; }
+  .canvas{ position:relative; }
+  .canvas.canvas-empty{ padding:56px 20px; display:flex; align-items:center; justify-content:center; }
+
+  .edges{ position:absolute; top:0; left:0; pointer-events:none; }
+  .contour path{ fill:none; stroke:var(--parchment); opacity:.05; stroke-width:1; }
+  .edge{ fill:none; }
+  .edge-complete{ stroke:var(--seafoam); stroke-width:3; }
+  .edge-active{ stroke:var(--brass); stroke-width:3; }
+  .edge-locked{ stroke:var(--muted); opacity:.35; stroke-width:2; stroke-dasharray:2 7; }
+
+  .waypoint{ position:absolute; transform:translate(-50%,-50%); display:flex; flex-direction:column;
+    align-items:center; width:132px; }
+  .marker{ width:52px; height:52px; border-radius:50%; border:2px solid var(--muted); background:var(--panel);
+    color:var(--parchment); display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease; padding:0; }
+  .marker:hover{ transform:scale(1.07); }
+  .marker:focus-visible{ outline:2px solid var(--brass); outline-offset:3px; }
+
+  .state-locked .marker{ border-style:dashed; opacity:.55; color:var(--muted); }
+  .state-available .marker{ border-color:var(--brass); box-shadow:0 0 0 4px var(--brass-dim); }
+  .state-in-progress .marker{ border-color:var(--brass); background:var(--brass); color:var(--ink);
+    animation:pulse 2.2s ease-in-out infinite; }
+  .state-complete .marker{ border-color:var(--seafoam); background:var(--seafoam); color:var(--ink); }
+
+  .is-goal .marker{ width:76px; height:76px; border-width:3px; }
+  .is-goal.state-locked .marker{ border-style:solid; opacity:.85; background:transparent; color:var(--brass); }
+  /* destination in reach: lit, but not reached — no pulse, it isn't a task */
+  .is-goal.state-in-progress .marker{ background:transparent; color:var(--brass);
+    border-color:var(--brass); animation:none; box-shadow:0 0 0 5px var(--brass-dim); }
+  .is-goal.state-complete .marker{ background:var(--seafoam); color:var(--ink); }
+
+  @keyframes pulse{ 0%,100%{ box-shadow:0 0 0 0 var(--brass-dim);} 50%{ box-shadow:0 0 0 9px transparent;} }
+  @media (prefers-reduced-motion:reduce){ .marker{ animation:none!important; transition:none!important; } }
+
+  .label{ margin-top:8px; text-align:center; }
+  .label-title{ display:block; font-size:12.5px; font-weight:600; line-height:1.25; }
+  .is-goal .label-title{ font-family:var(--font-display); font-size:14px; }
+  .label-date{ display:block; font-family:var(--font-mono); font-size:10.5px; color:var(--muted); margin-top:2px; }
+  .state-locked .label-title{ color:var(--muted); }
+
+  .empty-card{ max-width:360px; text-align:center; }
+  .empty-card h2{ font-size:22px; margin-bottom:8px; }
+  .empty-card p{ font-size:13px; color:var(--muted); line-height:1.5; margin-bottom:18px; }
+  .empty-form{ display:flex; flex-direction:column; gap:10px; }
+  .empty-form input{ background:var(--ink); border:1px solid var(--line); color:var(--parchment);
+    padding:11px 12px; border-radius:8px; }
+
+  /* ---------- Panel ---------- */
+  .scrim{ position:fixed; inset:0; background:rgba(10,14,17,.55); opacity:0; pointer-events:none;
+    transition:opacity .2s ease; z-index:40; }
+  .scrim.open{ opacity:1; pointer-events:auto; }
+
+  .panel{ position:fixed; top:0; right:0; height:100vh; width:400px; max-width:92vw;
+    background:var(--panel); border-left:1px solid var(--line); transform:translateX(100%);
+    z-index:50; overflow-y:auto; padding:26px;
+    padding-top:calc(26px + var(--safe-top)); padding-right:calc(26px + var(--safe-right));
+    -webkit-overflow-scrolling:touch;
+    /* hidden once the slide-out finishes, so the closed panel leaves the tab order */
+    visibility:hidden; transition:transform .25s ease, visibility 0s linear .25s; }
+  .panel.open{ transform:translateX(0); visibility:visible;
+    transition:transform .25s ease, visibility 0s; }
+  @media (max-width:760px){
+    .panel{ left:0; right:0; width:auto; max-width:none; top:auto; bottom:0; height:auto;
+      max-height:85vh; border-left:none; border-top:1px solid var(--line);
+      border-radius:18px 18px 0 0; transform:translateY(100%);
+      padding-top:26px; padding-bottom:calc(26px + var(--safe-bottom)); }
+    .panel.open{ transform:translateY(0); }
+  }
+  .panel-close{ position:absolute; top:14px; right:14px; background:none; border:none;
+    color:var(--muted); font-size:16px; cursor:pointer; width:36px; height:36px; border-radius:50%; }
+  .panel-close:hover{ color:var(--parchment); background:var(--panel-2); }
+  .panel-eyebrow{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.12em;
+    color:var(--brass); text-transform:uppercase; margin-bottom:6px; }
+  .panel-title{ font-size:22px; font-weight:600; margin-bottom:6px; padding-right:32px; outline:none; }
+  .panel-date{ font-family:var(--font-mono); font-size:12px; color:var(--muted); margin-bottom:18px; }
+
+  .pill-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+  .pill{ border:none; border-radius:20px; padding:10px 15px; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .pill-brass{ background:var(--brass); color:var(--ink); }
+  .pill-seafoam{ background:var(--seafoam); color:var(--ink); }
+  .pill-outline{ background:transparent; border:1px solid var(--brass); color:var(--brass); }
+  .pill-link{ background:none; border:none; color:var(--muted); font-size:12px; cursor:pointer;
+    text-decoration:underline; text-underline-offset:2px; padding:4px 0; }
+  .pill-link:hover{ color:var(--parchment); }
+  .locked-note{ font-size:13px; color:var(--muted); margin-bottom:8px; }
+  .complete-note{ font-size:13px; color:var(--seafoam); font-weight:600; margin-bottom:8px; }
+
+  .field-label{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--muted); margin:18px 0 8px; display:block; }
+  .panel-desc{ font-size:13.5px; line-height:1.6; color:var(--parchment); white-space:pre-wrap; }
+  .muted-small{ font-size:12px; color:var(--muted); }
+
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .dep-chip{ background:var(--panel-2); border:1px solid var(--line); color:var(--parchment);
+    font-size:11.5px; padding:7px 11px; border-radius:14px; cursor:pointer; }
+  .dep-chip:hover{ border-color:var(--brass); }
+  .dep-chip.dep-complete{ border-color:var(--seafoam); }
+  .dep-chip.dep-locked{ opacity:.6; }
+
+  .subtask-list{ display:flex; flex-direction:column; gap:2px; }
+  .subtask-row{ display:flex; align-items:flex-start; gap:9px; font-size:13px; padding:5px 0; }
+  .subtask-row label{ display:flex; align-items:flex-start; gap:9px; flex:1; cursor:pointer; min-width:0; }
+  .subtask-row input{ margin-top:3px; accent-color:var(--brass); flex:none; }
+  .subtask-row .done{ color:var(--muted); text-decoration:line-through; }
+  .subtask-del{ background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px;
+    line-height:1; padding:2px 6px; border-radius:6px; flex:none; }
+  .subtask-del:hover{ color:var(--coral); background:var(--panel-2); }
+  .add-subtask-form{ display:flex; gap:8px; margin-top:10px; }
+  .add-subtask-form input{ flex:1; background:var(--ink); border:1px solid var(--line);
+    color:var(--parchment); padding:9px 10px; border-radius:8px; min-width:0; }
+
+  .goal-form{ display:flex; flex-direction:column; }
+  .goal-form input, .goal-form textarea{ width:100%; background:var(--ink); border:1px solid var(--line);
+    color:var(--parchment); padding:10px 11px; border-radius:8px; margin-top:6px; }
+  .goal-form textarea{ resize:vertical; font-size:14px; }
+  .goal-form label.field-label{ margin-top:16px; }
+  .goal-form button[type="submit"]{ margin-top:20px; align-self:flex-start; }
+  .check-list{ display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;
+    border:1px solid var(--line); border-radius:8px; padding:10px; }
+  .check-row{ display:flex; align-items:center; gap:9px; font-size:13px; cursor:pointer; padding:4px 0; }
+  .check-row input{ accent-color:var(--brass); flex:none; }
+
+  .delete-link{ margin-top:26px; background:none; border:none; color:var(--coral); font-size:12px;
+    cursor:pointer; text-decoration:underline; text-underline-offset:2px; padding:4px 0; }
+
+  .confirm-row{ margin-top:22px; border:1px solid var(--coral); border-radius:10px; padding:13px; }
+  .confirm-row p{ margin:0 0 11px; font-size:13px; line-height:1.5; }
+  .confirm-actions{ display:flex; gap:9px; }
+  .pill-danger{ background:var(--coral); color:var(--ink); }
+  .pill-ghost{ background:transparent; border:1px solid var(--line); color:var(--parchment); }
+
+  /* ---------- Goals sheet ---------- */
+  .goal-list{ display:flex; flex-direction:column; gap:9px; }
+  .goal-item{ display:flex; align-items:center; gap:11px; border:1px solid var(--line);
+    border-radius:11px; padding:12px 13px; background:var(--ink); }
+  .goal-item.active{ border-color:var(--brass); }
+  .goal-pick{ flex:1; min-width:0; background:none; border:none; text-align:left; cursor:pointer; padding:0; }
+  .goal-name{ display:block; font-size:14px; font-weight:600; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  .goal-sub{ display:block; font-size:11.5px; color:var(--muted); margin-top:3px;
+    font-family:var(--font-mono); }
+  .goal-del{ background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px;
+    padding:6px 8px; border-radius:6px; flex:none; }
+  .goal-del:hover{ color:var(--coral); background:var(--panel-2); }
+  .io-row{ display:flex; gap:9px; flex-wrap:wrap; }
+  .io-note{ font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.5; }
+  #importFile{ font-size:12px; color:var(--muted); max-width:100%; }
+  .paste-area{ width:100%; background:var(--ink); border:1px solid var(--line);
+    color:var(--parchment); padding:10px 11px; border-radius:8px; font-size:12.5px;
+    font-family:var(--font-mono); resize:vertical; margin-top:8px; }
+
+  @media (max-width:760px){
+    .topbar{ padding:16px 16px; padding-top:calc(16px + var(--safe-top));
+      padding-left:calc(16px + var(--safe-left)); padding-right:calc(16px + var(--safe-right)); }
+    .stage{ padding:16px; padding-bottom:calc(32px + var(--safe-bottom));
+      padding-left:calc(16px + var(--safe-left)); padding-right:calc(16px + var(--safe-right)); }
+    .legend{ padding:10px 16px; }
+    .nextup{ padding:14px 16px 0; }
+    .header-right{ width:100%; justify-content:space-between; }
+    .progress-track{ width:130px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div id="installHint" class="install-hint" hidden>
+    <span>Install Waypoint: tap Share, then <strong>Add to Home Screen</strong>.</span>
+    <button id="dismissHint" type="button">Got it</button>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 4h11l-3 4 3 4H6" fill="currentColor" stroke="none"/></svg>
+      WAYPOINT
+    </div>
+    <div class="goal-block">
+      <button id="goalTitleEl" class="goal-title" title="Switch goal"></button>
+      <div id="goalDateEl" class="goal-date"></div>
+    </div>
+    <div class="header-right">
+      <div class="progress">
+        <div id="progressText" class="progress-text"></div>
+        <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+      </div>
+      <button id="newGoalBtn" class="link-btn">+ New goal</button>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="legend-item"><i class="dot dot-locked"></i>Locked</span>
+    <span class="legend-item"><i class="dot dot-available"></i>Ready</span>
+    <span class="legend-item"><i class="dot dot-progress"></i>In progress</span>
+    <span class="legend-item"><i class="dot dot-complete"></i>Complete</span>
+    <span class="legend-item"><i class="dot dot-goal"></i>Destination</span>
+  </div>
+
+  <section id="nextup" class="nextup" hidden>
+    <div class="nextup-head">
+      <button id="nextupToggle" class="nextup-toggle" type="button" aria-expanded="true">
+        <span class="chev">▼</span> Next up
+      </button>
+      <span id="nextupCount" class="nextup-count"></span>
+    </div>
+    <div id="nextupList" class="nextup-list"></div>
+  </section>
+
+  <main class="stage">
+    <div class="stage-toolbar">
+      <span class="stage-hint">Tap any waypoint to open it</span>
+      <button id="addWaypointBtn" class="btn-primary">+ Add waypoint</button>
+    </div>
+    <div id="canvasWrap" class="canvas-wrap">
+      <div id="canvas" class="canvas"></div>
+    </div>
+  </main>
+</div>
+
+<div id="scrim" class="scrim"></div>
+<aside id="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="panelTitle"></aside>
+
+<script>
+(function(){
+  'use strict';
+
+  const STORE_KEY = 'waypoint.v1';
+  const UI_KEY = 'waypoint.ui';
+  const SCHEMA = 1;
+
+  /* ---------- ids ---------- */
+  function newId(prefix){
+    const rand = (self.crypto && self.crypto.randomUUID)
+      ? self.crypto.randomUUID().slice(0,8)
+      : Math.random().toString(36).slice(2,10);
+    return prefix + '_' + Date.now().toString(36) + rand;
+  }
+
+  /* ---------- seed ---------- */
+  function demoGoal(){
+    const t = {};
+    ['t1','t2','t3','t9','t4','t5','t6','t7','t8'].forEach(k => { t[k] = newId('w'); });
+    return {
+      id: newId('g'),
+      title: 'Publish My Novel',
+      targetDate: '2027-03-01',
+      createdAt: new Date().toISOString(),
+      tasks: [
+        {id:t.t1, title:'Outline the story', due:'2026-09-05', status:'complete', dependsOn:[],
+          desc:'Three-act structure, character sheets, and a chapter-by-chapter beat sheet.',
+          subtasks:[{text:'Draft logline',done:true},{text:'Map character arcs',done:true},{text:'Chapter beat sheet',done:true}]},
+        {id:t.t2, title:'Set a writing routine', due:'2026-09-05', status:'complete', dependsOn:[],
+          desc:'Block daily writing time and pick a way to track progress.',
+          subtasks:[{text:'Choose a daily word target',done:true},{text:'Block calendar time',done:true}]},
+        {id:t.t3, title:'Write the first draft', due:'2026-12-20', status:'in-progress', dependsOn:[t.t1,t.t2],
+          desc:'Get the whole story down before revising anything.',
+          subtasks:[{text:'Act I complete',done:true},{text:'Act II complete',done:false},{text:'Act III complete',done:false}]},
+        {id:t.t9, title:'Build an author landing page', due:'2026-11-01', status:'todo', dependsOn:[t.t2],
+          desc:'A simple one-pager to collect emails ahead of launch.',
+          subtasks:[{text:'Pick a domain name',done:false},{text:'Write opt-in copy',done:false}]},
+        {id:t.t4, title:'Get beta reader feedback', due:'2027-01-15', status:'todo', dependsOn:[t.t3],
+          desc:'Send the draft to four or five readers with a short question list.', subtasks:[]},
+        {id:t.t5, title:'Design the book cover', due:'2027-01-15', status:'todo', dependsOn:[t.t3],
+          desc:'Brief a designer using two comparable covers in the genre.', subtasks:[]},
+        {id:t.t6, title:'Revise the manuscript', due:'2027-02-01', status:'todo', dependsOn:[t.t4,t.t5],
+          desc:'Fold in reader feedback and fix structural issues.', subtasks:[]},
+        {id:t.t7, title:'Copyedit & proofread', due:'2027-02-15', status:'todo', dependsOn:[t.t6],
+          desc:'A line-level pass, ideally by someone other than you.', subtasks:[]},
+        {id:t.t8, title:'Format for ebook & print', due:'2027-02-25', status:'todo', dependsOn:[t.t7],
+          desc:'Typeset both editions and generate proof copies.', subtasks:[]},
+      ]
+    };
+  }
+
+  /* ---------- state ---------- */
+  let state = { version: SCHEMA, activeGoalId: null, goals: [] };
+  let ui = { nextupCollapsed: false, hintDismissed: false };
+
+  const STATUSES = ['todo','in-progress','complete'];
+  const str = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
+  const isoDate = v => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? v : '';
+
+  /* Rebuild any incoming data defensively: unknown fields dropped, dependsOn
+     pruned to ids that actually exist in the same goal, cycles broken. */
+  function sanitize(raw){
+    const out = { version: SCHEMA, activeGoalId: null, goals: [] };
+    if(!raw || typeof raw !== 'object' || !Array.isArray(raw.goals)) return null;
+
+    raw.goals.forEach(g => {
+      if(!g || typeof g !== 'object') return;
+      const goal = {
+        id: str(g.id,64) || newId('g'),
+        title: str(g.title,80) || 'Untitled goal',
+        targetDate: isoDate(g.targetDate),
+        createdAt: str(g.createdAt,40) || new Date().toISOString(),
+        tasks: []
+      };
+      const rawTasks = Array.isArray(g.tasks) ? g.tasks : [];
+      const seen = new Set();
+      rawTasks.forEach(t => {
+        if(!t || typeof t !== 'object') return;
+        let id = str(t.id,64) || newId('w');
+        while(seen.has(id)) id = newId('w');
+        seen.add(id);
+        goal.tasks.push({
+          id,
+          title: str(t.title,80) || 'Untitled waypoint',
+          due: isoDate(t.due),
+          status: STATUSES.includes(t.status) ? t.status : 'todo',
+          dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn.filter(d => typeof d === 'string') : [],
+          desc: str(t.desc,2000),
+          subtasks: (Array.isArray(t.subtasks) ? t.subtasks : [])
+            .filter(s => s && typeof s === 'object')
+            .map(s => ({ text: str(s.text,200), done: !!s.done }))
+            .filter(s => s.text)
+        });
+      });
+      // prune dangling deps and self-references
+      goal.tasks.forEach(t => {
+        t.dependsOn = t.dependsOn.filter(d => d !== t.id && seen.has(d));
+        t.dependsOn = t.dependsOn.filter((d,i) => t.dependsOn.indexOf(d) === i);
+      });
+      breakCycles(goal.tasks);
+      out.goals.push(goal);
+    });
+
+    if(!out.goals.length) return null;
+    const wanted = str(raw.activeGoalId,64);
+    out.activeGoalId = out.goals.some(g => g.id === wanted) ? wanted : out.goals[0].id;
+    return out;
+  }
+
+  /* Depth-first walk that drops any back-edge it meets, so a hand-edited or
+     corrupt import can never produce a graph the layout can't resolve. */
+  function breakCycles(list){
+    const byId = new Map(list.map(t => [t.id, t]));
+    const done = new Set(), stack = new Set();
+    function visit(id){
+      if(done.has(id)) return;
+      if(stack.has(id)) return;
+      stack.add(id);
+      const t = byId.get(id);
+      if(t) t.dependsOn = t.dependsOn.filter(d => {
+        if(stack.has(d)) return false;   // back-edge → drop
+        visit(d);
+        return true;
+      });
+      stack.delete(id);
+      done.add(id);
+    }
+    list.forEach(t => visit(t.id));
+  }
+
+  let saveTimer = null;
+  function save(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+      catch(err){ /* private browsing / quota — keep running unsaved */ }
+    }, 200);
+  }
+  function saveUI(){
+    try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch(err){}
+  }
+
+  function load(){
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch(err){}
+    const clean = stored && stored.version === SCHEMA ? sanitize(stored) : null;
+    if(clean){ state = clean; }
+    else {
+      const g = demoGoal();
+      state = { version: SCHEMA, activeGoalId: g.id, goals: [g] };
+    }
+    try {
+      const u = JSON.parse(localStorage.getItem(UI_KEY) || 'null');
+      if(u && typeof u === 'object') ui = Object.assign(ui, u);
+    } catch(err){}
+  }
+
+  /* ---------- accessors ---------- */
+  const activeGoal = () => state.goals.find(g => g.id === state.activeGoalId) || state.goals[0] || null;
+  const tasks = () => { const g = activeGoal(); return g ? g.tasks : []; };
+  const taskById = id => tasks().find(t => t.id === id);
+
+  const allDepsComplete = t => t.dependsOn.every(d => { const dt = taskById(d); return dt && dt.status === 'complete'; });
+  const displayState = t => {
+    if(t.status === 'complete') return 'complete';
+    if(!allDepsComplete(t)) return 'locked';
+    if(t.status === 'in-progress') return 'in-progress';
+    return 'available';
+  };
+  const goalDeps = () => {
+    const dependedOn = new Set();
+    tasks().forEach(t => t.dependsOn.forEach(d => dependedOn.add(d)));
+    return tasks().filter(t => !dependedOn.has(t.id)).map(t => t.id);
+  };
+  const goalDisplayState = () => {
+    const deps = goalDeps();
+    if(!deps.length) return 'locked';
+    if(deps.every(id => { const t = taskById(id); return t && t.status === 'complete'; })) return 'complete';
+    if(tasks().some(t => t.status === 'complete' || t.status === 'in-progress')) return 'in-progress';
+    return 'locked';
+  };
+
+  /* Every task that transitively depends on `id` — the set that must not be
+     offered as a dependency of `id`, since each would close a loop. */
+  function descendantsOf(id){
+    const out = new Set();
+    let grew = true;
+    while(grew){
+      grew = false;
+      tasks().forEach(t => {
+        if(out.has(t.id)) return;
+        if(t.dependsOn.some(d => d === id || out.has(d))){ out.add(t.id); grew = true; }
+      });
+    }
+    return out;
+  }
+  const wouldCreateCycle = (taskId, depId) => depId === taskId || descendantsOf(taskId).has(depId);
+
+  /* ---------- formatting ---------- */
+  const escapeHtml = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const parseDate = iso => { if(!iso) return null; const d = new Date(iso + 'T00:00:00'); return isNaN(d) ? null : d; };
+  const formatDate = iso => { const d = parseDate(iso); return d ? d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '—'; };
+  const formatDateLong = iso => { const d = parseDate(iso); return d ? d.toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}) : 'No date set'; };
+
+  const checkSVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const lockSVG = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+  const flagSVG = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 3v18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 4h11l-3 4 3 4H6" fill="currentColor" stroke="none"/></svg>';
+
+  /* ---------- layering & layout ---------- */
+  function computeLayers(){
+    const memo = {};
+    const visiting = new Set();
+    function layerOf(id){
+      if(memo[id] !== undefined) return memo[id];
+      if(visiting.has(id)) return 0;        // back-edge guard: never recurse forever
+      visiting.add(id);
+      const deps = id === 'goal' ? goalDeps() : ((taskById(id) || {}).dependsOn || []);
+      const l = deps.length ? 1 + Math.max.apply(null, deps.map(layerOf)) : 0;
+      visiting.delete(id);
+      memo[id] = l;
+      return l;
+    }
+    tasks().forEach(t => layerOf(t.id));
+    layerOf('goal');
+    return memo;
+  }
+
+  function layout(orientation){
+    const memo = computeLayers();
+    const maxLayer = Math.max.apply(null, Object.values(memo));
+    const byLayer = {};
+    Object.keys(memo).forEach(id => { const l = memo[id]; (byLayer[l] = byLayer[l] || []).push(id); });
+
+    const spacingMain = orientation === 'vertical' ? 168 : 190;
+    const spacingPerp = orientation === 'vertical' ? 128 : 118;
+    const padMain = orientation === 'vertical' ? 74 : 90;
+    const padPerp = orientation === 'vertical' ? 92 : 72;
+    const maxCount = Math.max.apply(null, Object.values(byLayer).map(a => a.length));
+
+    const positions = {};
+    for(let l = 0; l <= maxLayer; l++){
+      const ids = byLayer[l] || [];
+      const n = ids.length;
+      ids.forEach((id,i) => {
+        const offset = (i - (n-1)/2) * spacingPerp;
+        const main = padMain + l*spacingMain;
+        const perp = padPerp + (maxCount-1)/2*spacingPerp + offset;
+        positions[id] = orientation === 'vertical' ? {x:perp,y:main} : {x:main,y:perp};
+      });
+    }
+    const mainExtent = padMain*2 + maxLayer*spacingMain;
+    const perpExtent = padPerp*2 + Math.max(0,maxCount-1)*spacingPerp;
+    const size = orientation === 'vertical' ? {width:perpExtent,height:mainExtent} : {width:mainExtent,height:perpExtent};
+    return {positions, size};
+  }
+
+  function addContours(svg,w,h,orientation){
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','contour');
+    for(let i=0;i<3;i++){
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      let d = '';
+      if(orientation === 'horizontal'){
+        const y = h*(0.22+i*0.28);
+        d = `M 0 ${y}`;
+        const step = Math.max(w/8,20);
+        for(let x=step;x<=w;x+=step){ d += ` L ${x} ${y+Math.sin(x/90+i)*(16+i*6)}`; }
+      } else {
+        const x = w*(0.22+i*0.28);
+        d = `M ${x} 0`;
+        const step = Math.max(h/8,20);
+        for(let y=step;y<=h;y+=step){ d += ` L ${x+Math.sin(y/90+i)*(12+i*5)} ${y}`; }
+      }
+      path.setAttribute('d',d);
+      g.appendChild(path);
+    }
+    svg.appendChild(g);
+  }
+
+  function markerIcon(ds,isGoal){
+    if(isGoal) return flagSVG;
+    if(ds === 'complete') return checkSVG;
+    if(ds === 'locked') return lockSVG;
+    return '';
+  }
+
+  function buildNodeEl(id,title,due,ds,pos,isGoal){
+    const wrap = document.createElement('div');
+    wrap.className = 'waypoint '+(isGoal?'is-goal ':'')+'state-'+ds;
+    wrap.style.left = pos.x+'px';
+    wrap.style.top = pos.y+'px';
+    wrap.dataset.id = id;
+    wrap.innerHTML = `<button class="marker" aria-label="${escapeHtml(title)}">${markerIcon(ds,isGoal)}</button>
+      <div class="label"><span class="label-title">${escapeHtml(title)}</span><span class="label-date">${isGoal?('by '+formatDate(due)):formatDate(due)}</span></div>`;
+    return wrap;
+  }
+
+  /* ---------- progress ---------- */
+  /* A finished waypoint counts 1. An unfinished one with a checklist counts
+     its tick ratio, so a 3-of-5 waypoint isn't reported as zero progress. */
+  function goalProgress(g){
+    const list = g ? g.tasks : [];
+    if(!list.length) return {completed:0, total:0, frac:0};
+    let acc = 0;
+    list.forEach(t => {
+      if(t.status === 'complete') acc += 1;
+      else if(t.subtasks.length) acc += t.subtasks.filter(s => s.done).length / t.subtasks.length;
+    });
+    return {
+      completed: list.filter(t => t.status === 'complete').length,
+      total: list.length,
+      frac: acc / list.length
+    };
+  }
+
+  /* ---------- render ---------- */
+  const $ = id => document.getElementById(id);
+
+  function updateHeader(){
+    const g = activeGoal();
+    $('goalTitleEl').innerHTML = escapeHtml(g ? g.title : 'Set your destination') +
+      (state.goals.length > 1 ? ' <span class="caret">▾</span>' : '');
+    $('goalDateEl').textContent = g && g.targetDate ? ('Destination · '+formatDateLong(g.targetDate)) : '';
+    const p = goalProgress(g);
+    $('progressText').textContent = p.total ? (p.completed+' of '+p.total+' waypoints reached') : 'No waypoints yet';
+    $('progressFill').style.width = Math.round(p.frac*100)+'%';
+  }
+
+  function nextUpItems(){
+    return tasks()
+      .map(t => ({t, ds: displayState(t)}))
+      .filter(x => x.ds === 'in-progress' || x.ds === 'available')
+      .sort((a,b) => {
+        if(a.ds !== b.ds) return a.ds === 'in-progress' ? -1 : 1;
+        return (a.t.due || '9999-12-31').localeCompare(b.t.due || '9999-12-31');
+      });
+  }
+
+  function renderNextUp(){
+    const section = $('nextup');
+    const g = activeGoal();
+    if(!g || !g.tasks.length){ section.hidden = true; return; }
+    section.hidden = false;
+    section.classList.toggle('collapsed', !!ui.nextupCollapsed);
+    $('nextupToggle').setAttribute('aria-expanded', String(!ui.nextupCollapsed));
+
+    const items = nextUpItems();
+    $('nextupCount').textContent = items.length ? items.length+' ready' : '';
+
+    if(!items.length){
+      $('nextupList').innerHTML = '<div class="nextup-empty">Nothing unblocked right now — complete a waypoint to open the next one.</div>';
+      return;
+    }
+    $('nextupList').innerHTML = items.map(({t,ds}) => {
+      const nextSub = t.subtasks.find(s => !s.done);
+      const meta = [
+        t.due ? formatDate(t.due) : 'No date',
+        nextSub ? escapeHtml(nextSub.text) : ''
+      ].filter(Boolean).join('<span class="sep">·</span>');
+      const action = ds === 'in-progress'
+        ? `<button class="mini-btn solid" data-action="set-status" data-id="${t.id}" data-status="complete">Done</button>`
+        : `<button class="mini-btn" data-action="set-status" data-id="${t.id}" data-status="in-progress">Start</button>`;
+      return `<div class="nextup-row${ds==='in-progress'?' is-active':''}">
+        <i class="nextup-tick ${ds}"></i>
+        <button class="nextup-main" data-open="${t.id}">
+          <span class="nextup-title">${escapeHtml(t.title)}</span>
+          <span class="nextup-meta">${meta}</span>
+        </button>
+        <span class="nextup-actions">${action}</span>
+      </div>`;
+    }).join('');
+  }
+
+  let currentOrientation = null;
+
+  function renderMap(){
+    const orientation = window.innerWidth < 760 ? 'vertical' : 'horizontal';
+    currentOrientation = orientation;
+    const canvasWrap = $('canvasWrap');
+    const canvas = $('canvas');
+    const keepLeft = canvasWrap.scrollLeft, keepTop = canvasWrap.scrollTop;
+    const g = activeGoal();
+
+    if(!g){
+      canvasWrap.className = 'canvas-wrap scroll-y-page';
+      canvas.className = 'canvas canvas-empty';
+      canvas.style.width = ''; canvas.style.height = '';
+      canvas.innerHTML = `<div class="empty-card">
+        <h2>Where are you headed?</h2>
+        <p>Name the destination and set a target date. You can change both later.</p>
+        <form id="goalSetupForm" class="empty-form">
+          <input name="title" placeholder="e.g. Publish my novel" required maxlength="60"/>
+          <input name="date" type="date"/>
+          <button type="submit" class="btn-primary">Set destination</button>
+        </form></div>`;
+      return;
+    }
+    if(!g.tasks.length){
+      canvasWrap.className = 'canvas-wrap scroll-y-page';
+      canvas.className = 'canvas canvas-empty';
+      canvas.style.width = ''; canvas.style.height = '';
+      canvas.innerHTML = `<div class="empty-card">
+        <h2>No waypoints yet</h2>
+        <p>Break &ldquo;${escapeHtml(g.title)}&rdquo; into the first steps that get you there.</p>
+        <button id="firstWaypointBtn" class="btn-primary">+ Add your first waypoint</button></div>`;
+      return;
+    }
+
+    canvasWrap.className = 'canvas-wrap ' + (orientation === 'horizontal' ? 'scroll-x' : 'scroll-y-page');
+    canvas.className = 'canvas orientation-'+orientation;
+    const {positions, size} = layout(orientation);
+    canvas.style.width = size.width+'px';
+    canvas.style.height = size.height+'px';
+    canvas.innerHTML = '';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('width', size.width);
+    svg.setAttribute('height', size.height);
+    svg.classList.add('edges');
+    canvas.appendChild(svg);
+    addContours(svg, size.width, size.height, orientation);
+
+    const edgeList = [];
+    tasks().forEach(t => t.dependsOn.forEach(d => edgeList.push({from:d, to:t.id})));
+    goalDeps().forEach(d => edgeList.push({from:d, to:'goal'}));
+
+    edgeList.forEach(e => {
+      const p1 = positions[e.from], p2 = positions[e.to];
+      if(!p1 || !p2) return;
+      const fromTask = taskById(e.from);
+      const fromComplete = !!fromTask && fromTask.status === 'complete';
+      const toState = e.to === 'goal' ? goalDisplayState() : displayState(taskById(e.to));
+      let cls = 'locked';
+      if(fromComplete && toState === 'complete') cls = 'complete';
+      else if(fromComplete) cls = 'active';
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      let d;
+      if(orientation === 'horizontal'){
+        const dx = (p2.x-p1.x)/2;
+        d = `M ${p1.x} ${p1.y} C ${p1.x+dx} ${p1.y}, ${p2.x-dx} ${p2.y}, ${p2.x} ${p2.y}`;
+      } else {
+        const dy = (p2.y-p1.y)/2;
+        d = `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y+dy}, ${p2.x} ${p2.y-dy}, ${p2.x} ${p2.y}`;
+      }
+      path.setAttribute('d', d);
+      path.setAttribute('class', 'edge edge-'+cls);
+      svg.appendChild(path);
+    });
+
+    tasks().forEach(t => {
+      canvas.appendChild(buildNodeEl(t.id, t.title, t.due, displayState(t), positions[t.id], false));
+    });
+    canvas.appendChild(buildNodeEl('goal', g.title, g.targetDate, goalDisplayState(), positions['goal'], true));
+
+    // rebuilding the canvas resets the scroll container — put the user back
+    canvasWrap.scrollLeft = keepLeft;
+    canvasWrap.scrollTop = keepTop;
+  }
+
+  function renderAll(){ updateHeader(); renderNextUp(); renderMap(); }
+
+  /* ---------- panel content ---------- */
+  function depChip(id){
+    const dt = taskById(id);
+    if(!dt) return '';
+    return `<button type="button" class="dep-chip dep-${displayState(dt)}" data-open="${dt.id}">${escapeHtml(dt.title)}</button>`;
+  }
+
+  function taskPanelHTML(t, opts){
+    const ds = displayState(t);
+    let statusControls = '';
+    if(ds === 'locked'){
+      const incomplete = t.dependsOn.filter(id => { const d = taskById(id); return d && d.status !== 'complete'; });
+      statusControls = `<div class="locked-note">Locked — waiting on:</div>
+        <div class="chip-row">${incomplete.map(depChip).join('')}</div>`;
+    } else if(ds === 'available'){
+      statusControls = `<div class="pill-row">
+        <button class="pill pill-brass" data-action="set-status" data-id="${t.id}" data-status="in-progress">Start</button>
+        <button class="pill pill-outline" data-action="set-status" data-id="${t.id}" data-status="complete">Mark complete</button>
+      </div>`;
+    } else if(ds === 'in-progress'){
+      statusControls = `<div class="pill-row">
+        <button class="pill pill-seafoam" data-action="set-status" data-id="${t.id}" data-status="complete">Mark complete</button>
+      </div><button class="pill-link" data-action="set-status" data-id="${t.id}" data-status="todo">Move back to to-do</button>`;
+    } else {
+      statusControls = `<div class="complete-note">✓ Completed</div>
+        <button class="pill-link" data-action="set-status" data-id="${t.id}" data-status="todo">Reopen</button>`;
+    }
+
+    const depsChips = t.dependsOn.length
+      ? `<div class="field-label">Depends on</div><div class="chip-row">${t.dependsOn.map(depChip).join('')}</div>`
+      : '';
+
+    const subtasksHtml = t.subtasks.map((s,i) => `<div class="subtask-row">
+        <label><input type="checkbox" class="subtask-check" data-task-id="${t.id}" data-index="${i}" ${s.done?'checked':''}/>
+        <span class="${s.done?'done':''}">${escapeHtml(s.text)}</span></label>
+        <button type="button" class="subtask-del" data-action="del-subtask" data-id="${t.id}" data-index="${i}" aria-label="Remove ${escapeHtml(s.text)}">✕</button>
+      </div>`).join('');
+
+    const footer = opts && opts.confirmDelete
+      ? `<div class="confirm-row">
+          <p>Delete &ldquo;${escapeHtml(t.title)}&rdquo;? Any waypoint depending on it will unlock.</p>
+          <div class="confirm-actions">
+            <button class="pill pill-danger" data-action="delete-task-confirm" data-id="${t.id}">Delete</button>
+            <button class="pill pill-ghost" data-action="open" data-id="${t.id}">Cancel</button>
+          </div></div>`
+      : `<button class="delete-link" data-action="delete-task" data-id="${t.id}">Delete waypoint</button>`;
+
+    return `<button class="panel-close" data-action="close" aria-label="Close">✕</button>
+      <div class="panel-eyebrow">Waypoint</div>
+      <h2 class="panel-title" id="panelTitle" tabindex="-1">${escapeHtml(t.title)}</h2>
+      <div class="panel-date">Due ${formatDateLong(t.due)}</div>
+      ${statusControls}
+      ${depsChips}
+      <div class="field-label">Notes</div>
+      <p class="panel-desc">${escapeHtml(t.desc || 'No notes yet.')}</p>
+      <div class="field-label">Checklist</div>
+      <div class="subtask-list">${subtasksHtml || '<div class="muted-small">No checklist items.</div>'}</div>
+      <form id="addSubtaskForm" data-task-id="${t.id}" class="add-subtask-form">
+        <input name="text" placeholder="Add a checklist item" maxlength="80"/>
+        <button type="submit" class="pill-link">Add</button>
+      </form>
+      <div class="field-label">Edit</div>
+      <button class="pill pill-outline" data-action="edit-task" data-id="${t.id}">Edit this waypoint</button>
+      ${footer}`;
+  }
+
+  /* One form for both create and edit — `t` present means edit. */
+  function waypointFormHTML(t){
+    const editing = !!t;
+    const blocked = editing ? descendantsOf(t.id) : new Set();
+    const options = tasks().filter(x => !editing || (x.id !== t.id && !blocked.has(x.id)));
+    const list = options.map(x => {
+      const checked = editing && t.dependsOn.indexOf(x.id) !== -1 ? ' checked' : '';
+      return `<label class="check-row"><input type="checkbox" name="deps" value="${x.id}"${checked}/> ${escapeHtml(x.title)}</label>`;
+    }).join('') || '<span class="muted-small">No other waypoints available to depend on.</span>';
+
+    // everything excluded beyond the task itself is a descendant
+    const excluded = editing ? tasks().length - options.length - 1 : 0;
+    const note = excluded > 0
+      ? `<div class="io-note">${excluded} waypoint${excluded===1?'':'s'} depending on this one ${excluded===1?'is':'are'} not listed — choosing ${excluded===1?'it':'them'} would create a loop.</div>`
+      : '';
+
+    return `<button class="panel-close" data-action="close" aria-label="Close">✕</button>
+      <div class="panel-eyebrow">${editing ? 'Edit waypoint' : 'New waypoint'}</div>
+      <h2 class="panel-title" id="panelTitle" tabindex="-1">${editing ? escapeHtml(t.title) : 'Add a waypoint'}</h2>
+      <form id="waypointForm" class="goal-form" data-id="${editing ? t.id : ''}">
+        <label class="field-label">Title<input name="title" required maxlength="60" placeholder="e.g. Send query letters" value="${editing ? escapeHtml(t.title) : ''}"/></label>
+        <label class="field-label">Due date<input name="date" type="date" value="${editing ? t.due : ''}"/></label>
+        <div class="field-label">Depends on</div>
+        <div class="check-list">${list}</div>
+        ${note}
+        <label class="field-label">Notes<textarea name="desc" rows="3" maxlength="240" placeholder="Optional">${editing ? escapeHtml(t.desc) : ''}</textarea></label>
+        <button type="submit" class="pill pill-brass">${editing ? 'Save changes' : 'Create waypoint'}</button>
+      </form>
+      ${editing ? `<button class="pill-link" data-action="open" data-id="${t.id}">Cancel</button>` : ''}`;
+  }
+
+  function goalPanelHTML(){
+    const g = activeGoal();
+    if(!g) return '';
+    const chips = goalDeps().map(depChip).join('') || '<span class="muted-small">Add waypoints to connect them here.</span>';
+    return `<button class="panel-close" data-action="close" aria-label="Close">✕</button>
+      <div class="panel-eyebrow">Destination</div>
+      <h2 class="panel-title" id="panelTitle" tabindex="-1">${escapeHtml(g.title)}</h2>
+      <form id="goalForm" class="goal-form">
+        <label class="field-label">Goal name<input name="title" value="${escapeHtml(g.title)}" required maxlength="60"/></label>
+        <label class="field-label">Target date<input name="date" type="date" value="${g.targetDate}"/></label>
+        <button type="submit" class="pill pill-brass">Save</button>
+      </form>
+      <div class="field-label">Feeds into this destination</div>
+      <div class="chip-row">${chips}</div>`;
+  }
+
+  function goalsPanelHTML(opts){
+    const rows = state.goals.map(g => {
+      const p = goalProgress(g);
+      const active = g.id === state.activeGoalId;
+      const confirming = opts && opts.confirmGoalId === g.id;
+      if(confirming){
+        return `<div class="confirm-row">
+          <p>Delete &ldquo;${escapeHtml(g.title)}&rdquo; and all ${p.total} of its waypoints?</p>
+          <div class="confirm-actions">
+            <button class="pill pill-danger" data-action="delete-goal-confirm" data-id="${g.id}">Delete</button>
+            <button class="pill pill-ghost" data-action="open-goals">Cancel</button>
+          </div></div>`;
+      }
+      return `<div class="goal-item${active?' active':''}">
+        <button class="goal-pick" data-action="switch-goal" data-id="${g.id}">
+          <span class="goal-name">${escapeHtml(g.title)}</span>
+          <span class="goal-sub">${p.completed}/${p.total} · ${g.targetDate ? formatDate(g.targetDate) : 'no target date'}${active?' · current':''}</span>
+        </button>
+        ${state.goals.length > 1 ? `<button class="goal-del" data-action="delete-goal" data-id="${g.id}" aria-label="Delete ${escapeHtml(g.title)}">✕</button>` : ''}
+      </div>`;
+    }).join('');
+
+    return `<button class="panel-close" data-action="close" aria-label="Close">✕</button>
+      <div class="panel-eyebrow">Goals</div>
+      <h2 class="panel-title" id="panelTitle" tabindex="-1">Your goals</h2>
+      <div class="goal-list">${rows}</div>
+      <div class="field-label">Add</div>
+      <form id="newGoalForm" class="goal-form">
+        <label class="field-label">Goal name<input name="title" required maxlength="60" placeholder="e.g. Run a half marathon"/></label>
+        <label class="field-label">Target date<input name="date" type="date"/></label>
+        <button type="submit" class="pill pill-brass">Create goal</button>
+      </form>
+      <div class="field-label">Backup</div>
+      <div class="io-row">
+        <button class="pill pill-outline" data-action="export-file">Download JSON</button>
+        <button class="pill pill-outline" data-action="export-copy">Copy JSON</button>
+      </div>
+      <div class="io-note">Waypoint stores everything on this device only. Keep a copy if it matters.</div>
+      <div class="field-label">Restore</div>
+      <input type="file" id="importFile" accept="application/json,.json"/>
+      <textarea id="importPaste" class="paste-area" rows="3" placeholder="…or paste exported JSON here"></textarea>
+      <div class="io-row" style="margin-top:9px">
+        <button class="pill pill-ghost" data-action="import-paste">Import pasted JSON</button>
+      </div>
+      <div id="ioStatus" class="io-note"></div>`;
+  }
+
+  /* ---------- panel plumbing ---------- */
+  let lastFocused = null;
+  let panelView = null;
+
+  function openPanel(view, opts){
+    const panel = $('panel');
+    let html = '';
+    if(view === 'new') html = waypointFormHTML(null);
+    else if(view === 'goal') html = goalPanelHTML();
+    else if(view === 'goals') html = goalsPanelHTML(opts);
+    else {
+      const t = taskById(view);
+      if(!t) return;
+      html = (opts && opts.edit) ? waypointFormHTML(t) : taskPanelHTML(t, opts);
+    }
+    if(!html) return;
+
+    if(!panel.classList.contains('open')) lastFocused = document.activeElement;
+    panelView = view;
+    panel.innerHTML = html;
+    panel.classList.add('open');
+    $('scrim').classList.add('open');
+    const title = panel.querySelector('#panelTitle');
+    if(title) title.focus();
+  }
+
+  function closePanel(){
+    const panel = $('panel');
+    if(!panel.classList.contains('open')) return;
+    panel.classList.remove('open');
+    $('scrim').classList.remove('open');
+    panelView = null;
+    if(lastFocused && document.contains(lastFocused)) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  function setStatus(id, status, reopen){
+    const t = taskById(id);
+    if(!t) return;
+    t.status = status;
+    save();
+    renderAll();
+    if(reopen) openPanel(id);
+  }
+
+  /* ---------- import / export ---------- */
+  function exportJSON(){ return JSON.stringify(state, null, 2); }
+
+  function ioStatus(msg){
+    const el = $('ioStatus');
+    if(el) el.textContent = msg;
+  }
+
+  function applyImport(text){
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch(err){ ioStatus('That isn’t valid JSON.'); return; }
+    const clean = sanitize(parsed);
+    if(!clean){ ioStatus('No goals found in that file.'); return; }
+    state = clean;
+    save();
+    renderAll();
+    openPanel('goals');
+    ioStatus('Imported ' + clean.goals.length + ' goal' + (clean.goals.length === 1 ? '' : 's') + '.');
+  }
+
+  /* ---------- wiring ---------- */
+  $('addWaypointBtn').addEventListener('click', () => openPanel('new'));
+  $('goalTitleEl').addEventListener('click', () => openPanel('goals'));
+  $('newGoalBtn').addEventListener('click', () => openPanel('goals'));
+
+  $('nextupToggle').addEventListener('click', () => {
+    ui.nextupCollapsed = !ui.nextupCollapsed;
+    saveUI();
+    renderNextUp();
+  });
+
+  $('nextup').addEventListener('click', (e) => {
+    const openEl = e.target.closest('[data-open]');
+    if(openEl){ openPanel(openEl.dataset.open); return; }
+    const statusEl = e.target.closest('[data-action="set-status"]');
+    if(statusEl){ setStatus(statusEl.dataset.id, statusEl.dataset.status, false); return; }
+  });
+
+  $('canvas').addEventListener('click', (e) => {
+    if(e.target.closest('#firstWaypointBtn')){ openPanel('new'); return; }
+    const wp = e.target.closest('.waypoint');
+    if(wp) openPanel(wp.dataset.id);
+  });
+
+  $('canvas').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if(e.target.id !== 'goalSetupForm') return;
+    const fd = new FormData(e.target);
+    const g = {
+      id: newId('g'),
+      title: (fd.get('title')||'').trim() || 'Untitled goal',
+      targetDate: isoDate(fd.get('date')),
+      createdAt: new Date().toISOString(),
+      tasks: []
+    };
+    state.goals.push(g);
+    state.activeGoalId = g.id;
+    save();
+    renderAll();
+  });
+
+  $('panel').addEventListener('click', (e) => {
+    const act = e.target.closest('[data-action]');
+    const openEl = e.target.closest('[data-open]');
+
+    if(openEl && !act){ openPanel(openEl.dataset.open); return; }
+    if(!act) return;
+    const action = act.dataset.action;
+    const id = act.dataset.id;
+
+    switch(action){
+      case 'close': closePanel(); break;
+      case 'open': openPanel(id); break;
+      case 'open-goals': openPanel('goals'); break;
+      case 'edit-task': openPanel(id, {edit:true}); break;
+      case 'set-status': setStatus(id, act.dataset.status, true); break;
+
+      case 'delete-task': openPanel(id, {confirmDelete:true}); break;
+      case 'delete-task-confirm': {
+        const g = activeGoal();
+        g.tasks = g.tasks.filter(t => t.id !== id);
+        g.tasks.forEach(t => { t.dependsOn = t.dependsOn.filter(d => d !== id); });
+        save(); closePanel(); renderAll();
+        break;
+      }
+
+      case 'del-subtask': {
+        const t = taskById(id);
+        if(t){ t.subtasks.splice(Number(act.dataset.index), 1); save(); updateHeader(); renderNextUp(); openPanel(id); }
+        break;
+      }
+
+      case 'switch-goal':
+        state.activeGoalId = id;
+        save(); renderAll(); closePanel();
+        break;
+
+      case 'delete-goal': openPanel('goals', {confirmGoalId:id}); break;
+      case 'delete-goal-confirm': {
+        state.goals = state.goals.filter(g => g.id !== id);
+        if(!state.goals.some(g => g.id === state.activeGoalId)){
+          state.activeGoalId = state.goals.length ? state.goals[0].id : null;
+        }
+        save(); renderAll(); openPanel('goals');
+        break;
+      }
+
+      case 'export-file': {
+        const blob = new Blob([exportJSON()], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'waypoint-' + new Date().toISOString().slice(0,10) + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        ioStatus('Downloaded.');
+        break;
+      }
+      case 'export-copy': {
+        const text = exportJSON();
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text)
+            .then(() => ioStatus('Copied to clipboard.'))
+            .catch(() => ioStatus('Couldn’t copy — use Download instead.'));
+        } else {
+          ioStatus('Clipboard unavailable — use Download instead.');
+        }
+        break;
+      }
+      case 'import-paste': {
+        const ta = $('importPaste');
+        if(ta && ta.value.trim()) applyImport(ta.value);
+        else ioStatus('Paste some JSON first.');
+        break;
+      }
+    }
+  });
+
+  $('panel').addEventListener('change', (e) => {
+    const cb = e.target.closest('.subtask-check');
+    if(cb){
+      const t = taskById(cb.dataset.taskId);
+      if(t){
+        t.subtasks[Number(cb.dataset.index)].done = cb.checked;
+        const span = cb.nextElementSibling;
+        if(span) span.classList.toggle('done', cb.checked);
+        save();
+        updateHeader();
+        renderNextUp();
+      }
+      return;
+    }
+    const file = e.target.closest('#importFile');
+    if(file && file.files && file.files[0]){
+      const reader = new FileReader();
+      reader.onload = () => applyImport(String(reader.result));
+      reader.onerror = () => ioStatus('Couldn’t read that file.');
+      reader.readAsText(file.files[0]);
+    }
+  });
+
+  $('panel').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+
+    if(e.target.id === 'addSubtaskForm'){
+      const taskId = e.target.dataset.taskId;
+      const text = (fd.get('text')||'').trim();
+      const t = taskById(taskId);
+      if(t && text){ t.subtasks.push({text, done:false}); save(); updateHeader(); renderNextUp(); }
+      openPanel(taskId);
+
+    } else if(e.target.id === 'goalForm'){
+      const g = activeGoal();
+      if(g){
+        g.title = (fd.get('title')||'').trim() || g.title;
+        g.targetDate = isoDate(fd.get('date'));
+        save();
+      }
+      closePanel(); renderAll();
+
+    } else if(e.target.id === 'newGoalForm'){
+      const g = {
+        id: newId('g'),
+        title: (fd.get('title')||'').trim() || 'Untitled goal',
+        targetDate: isoDate(fd.get('date')),
+        createdAt: new Date().toISOString(),
+        tasks: []
+      };
+      state.goals.push(g);
+      state.activeGoalId = g.id;
+      save(); renderAll(); closePanel();
+
+    } else if(e.target.id === 'waypointForm'){
+      const title = (fd.get('title')||'').trim();
+      if(!title) return;
+      const editId = e.target.dataset.id;
+      const deps = fd.getAll('deps').filter(d => taskById(d));
+      const g = activeGoal();
+      if(!g) return;
+
+      if(editId){
+        const t = taskById(editId);
+        if(!t) return;
+        t.title = title;
+        t.due = isoDate(fd.get('date'));
+        t.desc = (fd.get('desc')||'').trim();
+        // belt and braces: the form already hides descendants, reject anything else
+        t.dependsOn = deps.filter(d => !wouldCreateCycle(editId, d));
+      } else {
+        g.tasks.push({
+          id: newId('w'),
+          title,
+          due: isoDate(fd.get('date')),
+          status: 'todo',
+          dependsOn: deps,
+          desc: (fd.get('desc')||'').trim(),
+          subtasks: []
+        });
+      }
+      save(); closePanel(); renderAll();
+    }
+  });
+
+  /* keyboard: Escape closes, Tab stays inside the dialog */
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && $('panel').classList.contains('open')){ closePanel(); }
+  });
+  $('panel').addEventListener('keydown', (e) => {
+    if(e.key !== 'Tab') return;
+    const f = $('panel').querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])');
+    if(!f.length) return;
+    const first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  });
+
+  $('scrim').addEventListener('click', closePanel);
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const o = window.innerWidth < 760 ? 'vertical' : 'horizontal';
+      if(o !== currentOrientation) renderMap();
+    }, 150);
+  });
+
+  /* ---------- iOS install hint ---------- */
+  function maybeShowInstallHint(){
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = navigator.standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches;
+    if(!isIOS || standalone || ui.hintDismissed) return;
+    $('installHint').hidden = false;
+  }
+  $('dismissHint').addEventListener('click', () => {
+    ui.hintDismissed = true;
+    saveUI();
+    $('installHint').hidden = true;
+  });
+
+  /* ---------- boot ---------- */
+  load();
+  renderAll();
+  maybeShowInstallHint();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
