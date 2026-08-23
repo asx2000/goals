@@ -262,7 +262,10 @@
     color:var(--parchment); padding:9px 10px; border-radius:8px; min-width:0; }
 
   .goal-form{ display:flex; flex-direction:column; }
-  .goal-form input, .goal-form textarea{ width:100%; background:var(--ink); border:1px solid var(--line);
+  /* text fields only — a checkbox must not be stretched to the full row,
+     which would push its label out of view */
+  .goal-form input:not([type="checkbox"]), .goal-form textarea{ width:100%;
+    background:var(--ink); border:1px solid var(--line);
     color:var(--parchment); padding:10px 11px; border-radius:8px; margin-top:6px; }
   .goal-form textarea{ resize:vertical; font-size:14px; }
   .goal-form label.field-label{ margin-top:16px; }
@@ -270,7 +273,8 @@
   .check-list{ display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;
     border:1px solid var(--line); border-radius:8px; padding:10px; }
   .check-row{ display:flex; align-items:center; gap:9px; font-size:13px; cursor:pointer; padding:4px 0; }
-  .check-row input{ accent-color:var(--brass); flex:none; }
+  .check-row input{ accent-color:var(--brass); flex:none; width:auto; margin:0; padding:0; }
+  .check-row span{ flex:1; min-width:0; line-height:1.35; }
 
   .delete-link{ margin-top:26px; background:none; border:none; color:var(--coral); font-size:12px;
     cursor:pointer; text-decoration:underline; text-underline-offset:2px; padding:4px 0; }
@@ -870,7 +874,7 @@
     const options = tasks().filter(x => !editing || (x.id !== t.id && !blocked.has(x.id)));
     const list = options.map(x => {
       const checked = editing && t.dependsOn.indexOf(x.id) !== -1 ? ' checked' : '';
-      return `<label class="check-row"><input type="checkbox" name="deps" value="${x.id}"${checked}/> ${escapeHtml(x.title)}</label>`;
+      return `<label class="check-row"><input type="checkbox" name="deps" value="${x.id}"${checked}/><span>${escapeHtml(x.title)}</span></label>`;
     }).join('') || '<span class="muted-small">No other waypoints available to depend on.</span>';
 
     // everything excluded beyond the task itself is a descendant
@@ -954,6 +958,11 @@
       <div class="io-row" style="margin-top:9px">
         <button class="pill pill-ghost" data-action="import-paste">Import pasted JSON</button>
       </div>
+      <div class="field-label">App</div>
+      <div class="io-row">
+        <button class="pill pill-ghost" data-action="force-refresh">Clear cache &amp; reload</button>
+      </div>
+      <div class="io-note">Fetches the latest version of the app. Your goals are stored separately and are not affected.</div>
       <div id="ioStatus" class="io-note"></div>`;
   }
 
@@ -1132,6 +1141,24 @@
         }
         break;
       }
+      case 'force-refresh': {
+        if(!navigator.onLine){ ioStatus('You’re offline — reconnect first, or the reload will have nothing to fetch.'); break; }
+        ioStatus('Clearing…');
+        (async () => {
+          try {
+            if('serviceWorker' in navigator){
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(r => r.unregister()));
+            }
+            if(self.caches){
+              const names = await caches.keys();
+              await Promise.all(names.map(n => caches.delete(n)));
+            }
+          } catch(err){ /* clear what we can, then reload regardless */ }
+          location.reload();
+        })();
+        break;
+      }
       case 'import-paste': {
         const ta = $('importPaste');
         if(ta && ta.value.trim()) applyImport(ta.value);
@@ -1273,8 +1300,24 @@
   maybeShowInstallHint();
 
   if('serviceWorker' in navigator){
+    // Reload when a new worker takes over, so an updated build lands on its
+    // own. Skipped on the very first registration, which also fires this.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(!hadController || reloading) return;
+      reloading = true;
+      location.reload();
+    });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        reg.update().catch(() => {});
+        // an installed app resumes from background without reloading, so
+        // check again whenever it comes back to the foreground
+        document.addEventListener('visibilitychange', () => {
+          if(document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      }).catch(() => {});
     });
   }
 })();
