@@ -140,6 +140,7 @@
     padding-bottom:calc(48px + var(--safe-bottom)); }
   .stage-toolbar{ display:flex; align-items:center; justify-content:space-between;
     gap:12px; margin-bottom:14px; }
+  .stage-toolbar[hidden]{ display:none; }
   .stage-hint{ font-size:12px; color:var(--muted); }
   .btn-primary{ background:var(--brass); color:var(--ink); border:none; font-weight:600;
     font-size:13px; padding:11px 16px; border-radius:8px; cursor:pointer; }
@@ -357,7 +358,7 @@
   </section>
 
   <main class="stage">
-    <div class="stage-toolbar">
+    <div class="stage-toolbar" id="stageToolbar">
       <span class="stage-hint">Tap any waypoint to open it</span>
       <button id="addWaypointBtn" class="btn-primary">+ Add waypoint</button>
     </div>
@@ -384,42 +385,6 @@
       ? self.crypto.randomUUID().slice(0,8)
       : Math.random().toString(36).slice(2,10);
     return prefix + '_' + Date.now().toString(36) + rand;
-  }
-
-  /* ---------- seed ---------- */
-  function demoGoal(){
-    const t = {};
-    ['t1','t2','t3','t9','t4','t5','t6','t7','t8'].forEach(k => { t[k] = newId('w'); });
-    return {
-      id: newId('g'),
-      title: 'Publish My Novel',
-      targetDate: '2027-03-01',
-      createdAt: new Date().toISOString(),
-      tasks: [
-        {id:t.t1, title:'Outline the story', due:'2026-09-05', status:'complete', dependsOn:[],
-          desc:'Three-act structure, character sheets, and a chapter-by-chapter beat sheet.',
-          subtasks:[{text:'Draft logline',done:true},{text:'Map character arcs',done:true},{text:'Chapter beat sheet',done:true}]},
-        {id:t.t2, title:'Set a writing routine', due:'2026-09-05', status:'complete', dependsOn:[],
-          desc:'Block daily writing time and pick a way to track progress.',
-          subtasks:[{text:'Choose a daily word target',done:true},{text:'Block calendar time',done:true}]},
-        {id:t.t3, title:'Write the first draft', due:'2026-12-20', status:'in-progress', dependsOn:[t.t1,t.t2],
-          desc:'Get the whole story down before revising anything.',
-          subtasks:[{text:'Act I complete',done:true},{text:'Act II complete',done:false},{text:'Act III complete',done:false}]},
-        {id:t.t9, title:'Build an author landing page', due:'2026-11-01', status:'todo', dependsOn:[t.t2],
-          desc:'A simple one-pager to collect emails ahead of launch.',
-          subtasks:[{text:'Pick a domain name',done:false},{text:'Write opt-in copy',done:false}]},
-        {id:t.t4, title:'Get beta reader feedback', due:'2027-01-15', status:'todo', dependsOn:[t.t3],
-          desc:'Send the draft to four or five readers with a short question list.', subtasks:[]},
-        {id:t.t5, title:'Design the book cover', due:'2027-01-15', status:'todo', dependsOn:[t.t3],
-          desc:'Brief a designer using two comparable covers in the genre.', subtasks:[]},
-        {id:t.t6, title:'Revise the manuscript', due:'2027-02-01', status:'todo', dependsOn:[t.t4,t.t5],
-          desc:'Fold in reader feedback and fix structural issues.', subtasks:[]},
-        {id:t.t7, title:'Copyedit & proofread', due:'2027-02-15', status:'todo', dependsOn:[t.t6],
-          desc:'A line-level pass, ideally by someone other than you.', subtasks:[]},
-        {id:t.t8, title:'Format for ebook & print', due:'2027-02-25', status:'todo', dependsOn:[t.t7],
-          desc:'Typeset both editions and generate proof copies.', subtasks:[]},
-      ]
-    };
   }
 
   /* ---------- state ---------- */
@@ -517,11 +482,8 @@
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch(err){}
     const clean = stored && stored.version === SCHEMA ? sanitize(stored) : null;
-    if(clean){ state = clean; }
-    else {
-      const g = demoGoal();
-      state = { version: SCHEMA, activeGoalId: g.id, goals: [g] };
-    }
+    // no sample data — a fresh install starts empty and asks for a destination
+    state = clean || { version: SCHEMA, activeGoalId: null, goals: [] };
     try {
       const u = JSON.parse(localStorage.getItem(UI_KEY) || 'null');
       if(u && typeof u === 'object') ui = Object.assign(ui, u);
@@ -754,6 +716,9 @@
     const keepLeft = canvasWrap.scrollLeft, keepTop = canvasWrap.scrollTop;
     const g = activeGoal();
 
+    // nothing to add waypoints to yet — the empty card carries its own CTA
+    $('stageToolbar').hidden = !g;
+
     if(!g){
       canvasWrap.className = 'canvas-wrap scroll-y-page';
       canvas.className = 'canvas canvas-empty';
@@ -963,9 +928,9 @@
           <span class="goal-name">${escapeHtml(g.title)}</span>
           <span class="goal-sub">${p.completed}/${p.total} · ${g.targetDate ? formatDate(g.targetDate) : 'no target date'}${active?' · current':''}</span>
         </button>
-        ${state.goals.length > 1 ? `<button class="goal-del" data-action="delete-goal" data-id="${g.id}" aria-label="Delete ${escapeHtml(g.title)}">✕</button>` : ''}
+        <button class="goal-del" data-action="delete-goal" data-id="${g.id}" aria-label="Delete ${escapeHtml(g.title)}">✕</button>
       </div>`;
-    }).join('');
+    }).join('') || '<div class="muted-small">No goals yet — add one below.</div>';
 
     return `<button class="panel-close" data-action="close" aria-label="Close">✕</button>
       <div class="panel-eyebrow">Goals</div>
