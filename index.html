@@ -298,6 +298,15 @@
   .goal-del{ background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px;
     padding:6px 8px; border-radius:6px; flex:none; }
   .goal-del:hover{ color:var(--coral); background:var(--panel-2); }
+  .goal-rename{ background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px;
+    padding:6px 8px; border-radius:6px; flex:none; }
+  .goal-rename:hover{ color:var(--brass); background:var(--panel-2); }
+  .rename-row{ border:1px solid var(--brass); border-radius:11px; padding:12px 13px; background:var(--ink); }
+  .rename-row .rename-label{ display:block; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--muted); }
+  .rename-row input{ width:100%; background:var(--panel); border:1px solid var(--line);
+    color:var(--parchment); padding:9px 10px; border-radius:8px; margin-top:7px; }
+  .rename-actions{ display:flex; gap:9px; margin-top:11px; }
   .io-row{ display:flex; gap:9px; flex-wrap:wrap; }
   .io-note{ font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.5; }
   #importFile{ font-size:12px; color:var(--muted); max-width:100%; }
@@ -919,6 +928,15 @@
       const p = goalProgress(g);
       const active = g.id === state.activeGoalId;
       const confirming = opts && opts.confirmGoalId === g.id;
+      if(opts && opts.renameGoalId === g.id){
+        return `<form class="rename-row" id="renameGoalForm" data-id="${g.id}">
+          <label class="rename-label">Rename goal<input name="title" required maxlength="60"
+            value="${escapeHtml(g.title)}" data-autofocus aria-label="Goal name"/></label>
+          <div class="rename-actions">
+            <button type="submit" class="pill pill-brass">Save name</button>
+            <button type="button" class="pill pill-ghost" data-action="open-goals">Cancel</button>
+          </div></form>`;
+      }
       if(confirming){
         return `<div class="confirm-row">
           <p>Delete &ldquo;${escapeHtml(g.title)}&rdquo; and all ${p.total} of its waypoints?</p>
@@ -932,6 +950,7 @@
           <span class="goal-name">${escapeHtml(g.title)}</span>
           <span class="goal-sub">${p.completed}/${p.total} · ${g.targetDate ? formatDate(g.targetDate) : 'no target date'}${active?' · current':''}</span>
         </button>
+        <button class="goal-rename" data-action="rename-goal" data-id="${g.id}" title="Rename" aria-label="Rename ${escapeHtml(g.title)}">✎</button>
         <button class="goal-del" data-action="delete-goal" data-id="${g.id}" aria-label="Delete ${escapeHtml(g.title)}">✕</button>
       </div>`;
     }).join('') || '<div class="muted-small">No goals yet — add one below.</div>';
@@ -988,6 +1007,8 @@
     panel.innerHTML = html;
     panel.classList.add('open');
     $('scrim').classList.add('open');
+    const auto = panel.querySelector('[data-autofocus]');
+    if(auto){ auto.focus(); auto.select && auto.select(); return; }
     const title = panel.querySelector('#panelTitle');
     if(title) title.focus();
   }
@@ -1109,6 +1130,7 @@
         save(); renderAll(); closePanel();
         break;
 
+      case 'rename-goal': openPanel('goals', {renameGoalId:id}); break;
       case 'delete-goal': openPanel('goals', {confirmGoalId:id}); break;
       case 'delete-goal-confirm': {
         state.goals = state.goals.filter(g => g.id !== id);
@@ -1210,6 +1232,12 @@
         save();
       }
       closePanel(); renderAll();
+
+    } else if(e.target.id === 'renameGoalForm'){
+      const g = state.goals.find(x => x.id === e.target.dataset.id);
+      const title = (fd.get('title')||'').trim();
+      if(g && title){ g.title = title; save(); renderAll(); }
+      openPanel('goals');
 
     } else if(e.target.id === 'newGoalForm'){
       const g = {

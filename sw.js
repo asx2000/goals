@@ -1,6 +1,6 @@
 /* Waypoint service worker — cache-first app shell.
    Bump CACHE on every deploy so clients pick up the new build. */
-const CACHE = 'waypoint-v3';
+const CACHE = 'waypoint-v4';
 const SHELL = [
   './',
   './index.html',
