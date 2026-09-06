@@ -29,7 +29,10 @@ address bar, or *Menu → Install app*.
   That's the "what do I do today" answer.
 - **Loose ends feed the destination automatically** — any waypoint nothing else
   depends on connects straight to the goal.
-- **Multiple goals**, one active at a time, switched from the header.
+- **Multiple goals**, one active at a time, switched from the header. Rename or
+  delete any of them from the goals sheet — renaming works on goals you aren't
+  currently on, and the destination panel still edits the current goal's name
+  and target date.
 
 ## Your data
 
